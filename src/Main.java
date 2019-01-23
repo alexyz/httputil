@@ -10,8 +10,10 @@ public class Main {
 		Map<String,Class<?>> map = new TreeMap<>();
 		map.put("twitch", TwitchQuery.class);
 		map.put("vmreboot", VmReboot.class);
+		map.put("streamlink", StreamLink.class);
+		
 		if (args.length > 0) {
-			Class<?> mainclass = map.get(args[0]);
+			Class<?> mainclass = map.get(args[0].toLowerCase());
 			if (mainclass != null) {
 				Method main = mainclass.getMethod("main", String[].class);
 				main.invoke(null, (Object) ArrayUtils.remove(args, 0));

@@ -41,6 +41,8 @@ public class VmReboot {
 					postlogin(client, host, loginpath, pass);
 					String rebootpath = getform(client, host, "/VmRgRebootRestoreDevice.asp");
 					postreboot(client, host, rebootpath, commit);
+					println("sleep 15s");
+					Thread.sleep(15000);
 					println("end " + n);
 					return;
 				} catch (Exception e) {

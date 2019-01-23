@@ -27,3 +27,7 @@ log into a virgin media super hub router and reboot
 you need to provide the host address and password on the command line
 
 consider using a scheduled task/cron job
+
+## streamlink
+
+wrapper for running [streamlink](https://github.com/streamlink/streamlink) in a loop
