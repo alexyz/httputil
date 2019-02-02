@@ -19,8 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public class TwitchQuery {
 	
-	private static BufferedReader reader;
-	private static File propsfile;
+	private static final String CLIENTID = "clientid", DELAY = "delay", COLS = "cols", STREAMERS = "s.", GAMEIGNORE = "gi.";
 	
 	private Map<Integer,Integer> responses = new TreeMap<>();
 	private Set<String> signored = new TreeSet<>();
@@ -30,23 +29,24 @@ public class TwitchQuery {
 	private int cols;
 	
 	public static void main (String[] args) throws Exception {
-		reader = new BufferedReader(new InputStreamReader(System.in));
-		propsfile = new File(args.length > 0 ? args[0] : "twitch.properties");
+		
+		File propsfile = new File(args.length > 0 ? args[0] : "twitch.properties");
 		
 		while (true) {
+			// interactive tool - reload props each time 
 			TwitchQuery q = new TwitchQuery();
-			Properties props = loadprops();
-			q.clientid = props.getProperty("clientid");
-			q.streamers = getset(props, "s.");
-			q.gameignore = getset(props, "gi.");
-			q.cols = Integer.parseInt(props.getProperty("cols", "80"));
-			q.delayms = Integer.parseInt(props.getProperty("delay", "100"));
+			Properties props = Main.loadProps(propsfile);
+			q.clientid = props.getProperty(CLIENTID);
+			q.streamers = getset(props, STREAMERS);
+			q.gameignore = getset(props, GAMEIGNORE);
+			q.cols = Integer.parseInt(props.getProperty(COLS, "80"));
+			q.delayms = Integer.parseInt(props.getProperty(DELAY, "100"));
 			
 			System.out.println(new Date());
 			String cmd = "";
 			try (CloseableHttpClient client = HttpClients.createDefault()) {
 				q.run(client, cmd);
-				cmd = reader.readLine();
+				cmd = Main.reader.readLine();
 			} catch (Exception e) {
 				e.printStackTrace(System.out);
 			}
@@ -56,14 +56,6 @@ public class TwitchQuery {
 	
 	public TwitchQuery () {
 		//
-	}
-	
-	public static Properties loadprops () throws IOException {
-		Properties p = new Properties();
-		try (FileInputStream is = new FileInputStream(propsfile)) {
-			p.load(is);
-		}
-		return p;
 	}
 	
 	private static Set<String> getset (Properties p, String pre) {

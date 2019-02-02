@@ -6,7 +6,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.http.*;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.*;
-import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.impl.client.*;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
@@ -16,20 +15,28 @@ import org.apache.http.util.EntityUtils;
  */
 public class VmReboot {
 	
+	private static final String LOG = "log", COMMIT = "commit", PASS = "pass", HOST = "host";
+	
 	private static PrintWriter logpw;
 	
 	public static void main (String[] args) throws Exception {
-		if (args.length != 3) {
-			System.out.println("usage: VmReboot host password commit");
+		if (args.length > 1) {
+			System.out.println("usage: java -jar httputil.jar VmReboot [vmreboot.properties]");
 			return;
 		}
 		
-		int a = 0;
-		String host = args[a++];
-		String pass = args[a++];
-		boolean commit = Boolean.parseBoolean(args[a++]);
+		Properties p = Main.loadProps(new File(args.length > 0 ? args[0] : "vmreboot.properties"));
+		String host = p.getProperty(HOST);
+		String pass = p.getProperty(PASS);
+		boolean commit = Boolean.parseBoolean(p.getProperty(COMMIT));
+		File log = new File(p.getProperty(LOG), "vmreboot.log");
 		
-		try (PrintWriter pw = new PrintWriter(new FileWriter("vmreboot.log", true))) {
+		System.out.println(HOST + " = " + host);
+		System.out.println(PASS + " = " + pass);
+		System.out.println(COMMIT + " = " + commit);
+		System.out.println(LOG + " = " + log.getAbsolutePath() + " exists = " + log.exists());
+		
+		try (PrintWriter pw = new PrintWriter(new FileWriter(log, true))) {
 			logpw = pw;
 			
 			for (int n = 0; n < 5; n++) {
