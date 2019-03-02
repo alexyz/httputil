@@ -1,6 +1,7 @@
 
 import java.io.*;
 import java.lang.reflect.Method;
+import java.text.DateFormat;
 import java.util.*;
 
 import org.apache.commons.lang3.ArrayUtils;
@@ -9,11 +10,9 @@ public class Main {
 	
 	public static final long NS_IN_S = 1000000000;
 	
-	public static BufferedReader reader;
+	private static BufferedReader BR;
 	
 	public static void main (String[] args) throws Exception {
-		reader = new BufferedReader(new InputStreamReader(System.in));
-		
 		Map<String,Class<?>> map = new TreeMap<>();
 		map.put("twitch", TwitchQuery.class);
 		map.put("vmreboot", VmReboot.class);
@@ -24,10 +23,10 @@ public class Main {
 			if (mainclass != null) {
 				run(mainclass, args);
 			} else {
-				System.out.println("could not find " + args[0] + " in " + map.keySet());
+				println("could not find " + args[0] + " in " + map.keySet());
 			}
 		} else {
-			System.out.println("specify one of " + map.keySet());
+			println("specify one of " + map.keySet());
 		}
 		
 		System.exit(1);
@@ -35,13 +34,14 @@ public class Main {
 
 	private static void run (Class<?> mainclass, String[] args) throws IOException {
 		try {
+			println("run " + mainclass.getSimpleName() + " " + Arrays.toString(args));
 			Method main = mainclass.getMethod("main", String[].class);
 			main.invoke(null, (Object) ArrayUtils.remove(args, 0));
 			System.exit(0);
 		} catch (Exception e) {
 			e.printStackTrace(System.out);
-			System.out.println("press return to exit");
-			reader.readLine();
+			println("press return to exit");
+			readLine();
 		}
 	}
 	
@@ -58,4 +58,16 @@ public class Main {
 		return p;
 	}
 	
+	public static String readLine() throws IOException {
+		if (BR == null) {
+			BR = new BufferedReader(new InputStreamReader(System.in));
+		}
+		return BR.readLine();
+	}
+	
+	public static void println(String l) {
+		DateFormat f = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.MEDIUM);
+		System.out.println(f.format(new Date()) + ": " + l);
+	}
+
 }

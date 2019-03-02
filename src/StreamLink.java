@@ -5,6 +5,8 @@ import java.text.*;
 import java.util.*;
 
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 
 /**
  * query for and record twitch streamer (wrapper for streamlink)
@@ -39,13 +41,13 @@ public class StreamLink {
 		host = p.getProperty(HOST, "www.twitch.tv");
 		reboot = Boolean.parseBoolean(p.getProperty(REBOOT));
 		
-		print("exe = " + exe + " exists = " + exe.exists());
-		print(STREAMER + " = " + streamer);
-		print(QUALITY + " = " + qual);
-		print(SLEEPTIME + " = " + stime);
-		print(DIR + " = " + dir  + " exists = " + dir.exists());
-		print(HOST + " = " + host);
-		print(REBOOT + " = " + reboot);
+		Main.println("exe = " + exe + " exists = " + exe.exists());
+		Main.println(STREAMER + " = " + streamer);
+		Main.println(QUALITY + " = " + qual);
+		Main.println(SLEEPTIME + " = " + stime);
+		Main.println(DIR + " = " + dir  + " exists = " + dir.exists());
+		Main.println(HOST + " = " + host);
+		Main.println(REBOOT + " = " + reboot);
 		
 		if (!dir.exists()) {
 			throw new Exception("dir does not exist: " + dir.getAbsolutePath());
@@ -59,8 +61,32 @@ public class StreamLink {
 	}
 
 	private static void run() throws Exception {
-		File out = new File(dir, streamer + "-" + timestamp() + ".ts");
 		
+		boolean maybeLive = true;
+		if (host.equals("www.twitch.tv")) {
+			try (CloseableHttpClient client = HttpClients.createDefault()) {
+				TwitchQuery q = TwitchQuery.create(null);
+				Stream s = q.queryStream(client, streamer);
+				Main.println("twitch stream: " + s);
+				maybeLive = s != null && s.live();
+			} catch (Exception e) {
+				Main.println("could not query: " + e);
+			}
+		}
+		
+		File out = new File(dir, streamer + "-" + format.format(new Date()) + ".ts");
+		if (maybeLive) {
+			execute(out);
+		}
+		
+		if (out.exists()) {
+			stime = 60;
+		} else {
+			stime = Math.min(stime + 60, maxstime);
+		}
+	}
+
+	private static void execute (File out) throws Exception {
 		URIBuilder ub = new URIBuilder();
 		ub.setScheme("https");
 		ub.setHost(host);
@@ -85,40 +111,26 @@ public class StreamLink {
 					if (l.length() > 80) {
 						l = l.substring(0, 80) + "...";
 					}
-					print(l);
+					Main.println(l);
 				}
 			}
 		}
 		
-		print("exit " + p.exitValue());
-		
-		if (out.exists()) {
-			stime = 60;
-		} else {
-			stime = Math.min(stime + 60, maxstime);
-		}
+		Main.println("exit " + p.exitValue());
 	}
 
 	private static void sleep(int n) throws Exception {
-		print("sleep " + n);
+		Main.println("sleep " + n);
 		Thread.sleep(n*1000);
 	}
-
-	private static void print(String l) {
-		System.out.println(timestamp() + ": " + l);
-	}
-
-	private static String timestamp() {
-		return format.format(new Date());
-	}
-
+	
 	private static void checkreboot () throws Exception {
 		if (reboot) {
 			try {
 				InetAddress.getByName(host);
 				return;
 			} catch (Exception e) {
-				print("could not get host: " + e.toString());
+				Main.println("could not get host: " + e.toString());
 			}
 			
 			long t = System.nanoTime();
@@ -128,10 +140,10 @@ public class StreamLink {
 					VmReboot.main(new String[0]);
 					lastreboot = t;
 				} else {
-					print("avoid reboot due to last reboot less than 1 hour ago");
+					Main.println("avoid reboot due to last reboot less than 1 hour ago");
 				}
 			} else {
-				print("avoid reboot due to started less than 1 hour ago");
+				Main.println("avoid reboot due to started less than 1 hour ago");
 			}
 		}
 	}

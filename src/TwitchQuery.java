@@ -22,36 +22,40 @@ public class TwitchQuery {
 	private static final String CLIENTID = "clientid", DELAY = "delay", COLS = "cols", STREAMERS = "s.", GAMEIGNORE = "gi.";
 	
 	private Map<Integer,Integer> responses = new TreeMap<>();
-	private Set<String> signored = new TreeSet<>();
+	private Set<String> streamIgnored = new TreeSet<>();
 	private Set<String> streamers, gameignore;
 	private String clientid;
 	private int delayms;
 	private int cols;
 	
 	public static void main (String[] args) throws Exception {
+		File propsfile = args.length > 0 ? new File(args[0]) : null;
 		
-		File propsfile = new File(args.length > 0 ? args[0] : "twitch.properties");
-		
-		while (true) {
-			// interactive tool - reload props each time 
-			TwitchQuery q = new TwitchQuery();
-			Properties props = Main.loadProps(propsfile);
-			q.clientid = props.getProperty(CLIENTID);
-			q.streamers = getset(props, STREAMERS);
-			q.gameignore = getset(props, GAMEIGNORE);
-			q.cols = Integer.parseInt(props.getProperty(COLS, "80"));
-			q.delayms = Integer.parseInt(props.getProperty(DELAY, "100"));
-			
-			System.out.println(new Date());
-			String cmd = "";
-			try (CloseableHttpClient client = HttpClients.createDefault()) {
-				q.run(client, cmd);
-				cmd = Main.reader.readLine();
-			} catch (Exception e) {
-				e.printStackTrace(System.out);
+		try (CloseableHttpClient client = HttpClients.createDefault()) {
+			String cmd = null;
+			while (true) {
+				try {
+					TwitchQuery q = create(propsfile);
+					q.run(client, StringUtils.defaultString(cmd, "streams"));
+				} catch (RuntimeException e) {
+					throw e;
+				} catch (Exception e) {
+					Main.println("could not run: " + e);
+				}
+				cmd = StringUtils.trimToNull(Main.readLine());
 			}
 		}
-		
+	}
+
+	public static TwitchQuery create (File propsfile) throws IOException {
+		TwitchQuery q = new TwitchQuery();
+		Properties props = Main.loadProps(propsfile != null ? propsfile : new File("twitch.properties"));
+		q.clientid = props.getProperty(CLIENTID);
+		q.streamers = getset(props, STREAMERS);
+		q.gameignore = getset(props, GAMEIGNORE);
+		q.cols = Integer.parseInt(props.getProperty(COLS, "80"));
+		q.delayms = Integer.parseInt(props.getProperty(DELAY, "100"));
+		return q;
 	}
 	
 	public TwitchQuery () {
@@ -71,19 +75,20 @@ public class TwitchQuery {
 		return set;
 	}
 	
-	private void run (CloseableHttpClient client, String cmd) throws Exception {
+	public void run (CloseableHttpClient client, String cmd) throws Exception {
+		Main.println(cmd);
 		for (String user : streamers) {
 			switch (cmd) {
-				case "": printstreams(client, user); break;
-				case "channels": printchannels(client, user); break;
-				default: System.out.println("unknown cmd: " + cmd); return;
+				case "streams": printStream(client, user); break;
+				case "channels": printChannel(client, user); break;
+				default: Main.println("unknown cmd: " + cmd); return;
 			}
 			Thread.sleep(delayms);
 		}
-		System.out.println(responses + ", " + signored);
+		System.out.println(responses + ", " + streamIgnored);
 	}
 	
-	private void printchannels (CloseableHttpClient client, String user) {
+	private void printChannel (CloseableHttpClient client, String user) throws Exception {
 		HttpGet get = new HttpGet("https://api.twitch.tv/kraken/channels/" + user);
 		get.addHeader(new BasicHeader("client-id", clientid));
 		try (CloseableHttpResponse resp = client.execute(get)) {
@@ -92,30 +97,34 @@ public class TwitchQuery {
 				String info = chaninfo(user, content);
 				System.out.println(StringUtils.left(info, cols-1));
 			} else {
-				System.out.println("channels: " + user + ": " + resp.getStatusLine());
+				Main.println("printChannel: " + user + ": " + resp.getStatusLine());
 			}
-		} catch (Exception e) {
-			System.out.println("channels: " + user + ": " + e);
 		}
 	}
 	
-	private void printstreams (CloseableHttpClient client, String user) {
+	private void printStream (CloseableHttpClient client, String user) throws Exception {
+		Stream stream = queryStream(client, user);
+		if (stream != null) {
+			if (stream.live() && !gameignore.contains(stream.game.toLowerCase())) {
+				System.out.println(StringUtils.left(stream.toString(), cols-1));
+			} else {
+				streamIgnored.add(stream.name);
+			}
+		} 
+	}
+	
+	public Stream queryStream (CloseableHttpClient client, String user) throws Exception {
 		HttpGet get = new HttpGet("https://api.twitch.tv/kraken/streams/" + user);
 		get.addHeader(new BasicHeader("client-id", clientid));
 		try (CloseableHttpResponse resp = client.execute(get)) {
 			addresponse(resp);
 			String content = EntityUtils.toString(resp.getEntity());
 			if (resp.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-				String info = streaminfo(content);
-				if (info != null) {
-					System.out.println(StringUtils.left(info, cols-1));
-				}
+				return parseStream(content);
 			} else {
-				System.out.println("streams: " + user + ": " + resp);
+				Main.println("queryStream: " + user + ": " + resp.getStatusLine());
+				return null;
 			}
-		} catch (Exception e) {
-			System.out.println("streams: " + user + ": " + e);
-			//throw new RuntimeException("streams: " + user, e);
 		}
 	}
 	
@@ -131,33 +140,14 @@ public class TwitchQuery {
 		return user + " - " + (namenode != null ? namenode.asText() : null);
 	}
 	
-	private String streaminfo (String content) throws IOException {
+	private static Stream parseStream (String content) throws IOException {
 		ObjectMapper mapper = new ObjectMapper();
 		JsonNode node = mapper.readTree(content);
 		JsonNode stream = node.get("stream");
-		if (stream != null && !stream.isNull()) {
-			JsonNode channel = stream.get("channel");
-			String name = channel.get("display_name").asText();
-			String status = StringUtils.normalizeSpace(channel.get("status").asText());
-			String game = stream.get("game").asText();
-			int view = stream.get("viewers").asInt();
-			// "2018-05-27T04:49:48Z"
-			Instant created = Instant.parse(stream.get("created_at").asText());
-			Duration dur = Duration.between(created, Instant.now());
-			String viewStr = String.format("%dv", view);
-			String durStr = formatDuration(dur);
-			//boolean playlist = stream.get("is_playlist").asBoolean();
-			String type = stream.get("stream_type").asText();
-			if (type.equals("live") && !gameignore.contains(game.toLowerCase())) {
-				return String.format("%s - %s - %s - %s - %s", name, durStr, viewStr, game, status, game);
-			} else {
-				signored.add(name);
-			}
-		}
-		return null;
+		return stream != null && !stream.isNull() ? new Stream(stream) : null;
 	}
 	
-	private static String formatDuration (Duration dur) {
+	static String formatDuration (Duration dur) {
 		long d = dur.toDays(), h = dur.toHours() % 24, m = dur.toMinutes() % 60, s = dur.getSeconds() % 60;
 		if (d > 0) {
 			return String.format("%dd %dh %dm", d, h, m);
