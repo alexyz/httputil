@@ -67,10 +67,10 @@ public class StreamLink {
 			try (CloseableHttpClient client = HttpClients.createDefault()) {
 				TwitchQuery q = TwitchQuery.create(null);
 				Stream s = q.queryStream(client, streamer);
-				Main.println("twitch stream: " + s);
+				//Main.println("twitch stream: " + s);
 				maybeLive = s != null && s.live();
 			} catch (Exception e) {
-				Main.println("could not query: " + e);
+				Main.println("could not query twitch: " + e);
 			}
 		}
 		
@@ -120,7 +120,7 @@ public class StreamLink {
 	}
 
 	private static void sleep(int n) throws Exception {
-		Main.println("sleep " + n);
+		//Main.println("sleep " + n);
 		Thread.sleep(n*1000);
 	}
 	

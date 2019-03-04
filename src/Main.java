@@ -21,7 +21,7 @@ public class Main {
 		if (args.length > 0) {
 			Class<?> mainclass = map.get(args[0].toLowerCase());
 			if (mainclass != null) {
-				run(mainclass, args);
+				run(mainclass, ArrayUtils.remove(args, 0));
 			} else {
 				println("could not find " + args[0] + " in " + map.keySet());
 			}
@@ -34,9 +34,9 @@ public class Main {
 
 	private static void run (Class<?> mainclass, String[] args) throws IOException {
 		try {
-			println("run " + mainclass.getSimpleName() + " " + Arrays.toString(args));
+			println(mainclass.getSimpleName() + " " + Arrays.toString(args));
 			Method main = mainclass.getMethod("main", String[].class);
-			main.invoke(null, (Object) ArrayUtils.remove(args, 0));
+			main.invoke(null, (Object) args);
 			System.exit(0);
 		} catch (Exception e) {
 			e.printStackTrace(System.out);
