@@ -22,7 +22,7 @@ public class Stream {
 		return type.equals("live");
 	}
 	public String durStr() {
-		return TwitchQuery.formatDuration(Duration.between(created, Instant.now()));
+		return Main.formatDuration(Duration.between(created, Instant.now()));
 	}
 	@Override
 	public String toString() {

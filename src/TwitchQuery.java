@@ -1,11 +1,9 @@
 
 import java.io.*;
-import java.time.*;
 import java.util.*;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
-import org.apache.http.StatusLine;
 import org.apache.http.client.methods.*;
 import org.apache.http.impl.client.*;
 import org.apache.http.message.BasicHeader;
@@ -19,142 +17,239 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public class TwitchQuery {
 	
-	private static final String CLIENTID = "clientid", DELAY = "delay", COLS = "cols", STREAMERS = "s.", GAMEIGNORE = "gi.";
+	public static final String CLIENTID = "clientid", DELAY = "delay", COLS = "cols", STREAMER = "s.", GAMEIGNORE = "gi.";
+	public static final String STATS = "stats", ASYNC_STREAMER = "as.", ASYNC = "async", ASYNCPERIOD = "asyncperiod", RESENDPERIOD = "resendperiod", MAILTO = "mailto";
+	public static final String MAILSTREAMS_CMD = "m", STREAMS_CMD = "s", CHANNELS_CMD = "c";
+	private static final Map<String,Long> SEEN = new TreeMap<>();
 	
-	private Map<Integer,Integer> responses = new TreeMap<>();
-	private Set<String> streamIgnored = new TreeSet<>();
-	private Set<String> streamers, gameignore;
-	private String clientid;
-	private int delayms;
-	private int cols;
+	public static TwitchThread thread;
 	
 	public static void main (String[] args) throws Exception {
-		File propsfile = args.length > 0 ? new File(args[0]) : null;
-		
 		try (CloseableHttpClient client = HttpClients.createDefault()) {
+			// first run - should really verify channels are correct
 			String cmd = null;
 			while (true) {
 				try {
-					TwitchQuery q = create(propsfile);
-					q.run(client, StringUtils.defaultString(cmd, "streams"));
+					TwitchQuery q = create();
+					q.loadStats();
+					q.updateAsync();
+					q.run(client, StringUtils.defaultString(cmd, STREAMS_CMD));
+					q.saveStats();
 				} catch (RuntimeException e) {
 					throw e;
 				} catch (Exception e) {
-					Main.println("could not run: " + e);
+					Main.println("main: " + e);
 				}
 				cmd = StringUtils.trimToNull(Main.readLine());
 			}
 		}
 	}
-
-	public static TwitchQuery create (File propsfile) throws IOException {
-		TwitchQuery q = new TwitchQuery();
-		Properties props = Main.loadProps(propsfile != null ? propsfile : new File("twitch.properties"));
-		q.clientid = props.getProperty(CLIENTID);
-		q.streamers = getset(props, STREAMERS);
-		q.gameignore = getset(props, GAMEIGNORE);
-		q.cols = Integer.parseInt(props.getProperty(COLS, "80"));
-		q.delayms = Integer.parseInt(props.getProperty(DELAY, "100"));
-		return q;
+	
+	public static TwitchQuery create () throws IOException {
+		return new TwitchQuery(Main.loadProps(new File("twitch.properties")));
 	}
 	
-	public TwitchQuery () {
-		//
-	}
+	private final Map<Integer,Integer> responses = new TreeMap<>();
+	private final List<Stream> liveOk = new ArrayList<>(), liveNotOk = new ArrayList<>();
+	private final Set<String> streamers = new TreeSet<>();
+	private final Set<String> asyncStreamers = new TreeSet<>();
+	private final Set<String> gameIgnore = new TreeSet<>();
+	private final Properties seenProps = new Properties();
+	private String clientId, mailto;
+	private int delayMs, asyncPeriod, resendPeriod, cols;
+	private File statsFile;
+	private boolean seenMod, async;
 	
-	private static Set<String> getset (Properties p, String pre) {
-		Set<String> set = new TreeSet<>();
-		for (String k : p.stringPropertyNames()) {
-			if (k.startsWith(pre)) {
-				String v = StringUtils.trimToNull(p.getProperty(k).toLowerCase());
-				if (v != null) {
-					set.add(v);
-				}
-			}
-		}
-		return set;
+	private TwitchQuery (Properties props) {
+		clientId = props.getProperty(CLIENTID);
+		streamers.addAll(Main.getPropValues(props, STREAMER));
+		asyncStreamers.addAll(Main.getPropValues(props, ASYNC_STREAMER));
+		gameIgnore.addAll(Main.getPropValues(props, GAMEIGNORE));
+		cols = Integer.parseInt(props.getProperty(COLS, "80"));
+		delayMs = Integer.parseInt(props.getProperty(DELAY, "100"));
+		String stats = props.getProperty(STATS);
+		statsFile = stats != null && stats.length() > 0 ? new File(stats) : null;
+		async = Boolean.parseBoolean(props.getProperty(ASYNC));
+		asyncPeriod = Integer.parseInt(props.getProperty(ASYNCPERIOD, String.valueOf(15*60)));
+		resendPeriod = Integer.parseInt(props.getProperty(RESENDPERIOD, String.valueOf(12*60*60)));
+		mailto = props.getProperty(MAILTO);
 	}
 	
 	public void run (CloseableHttpClient client, String cmd) throws Exception {
-		Main.println(cmd);
+		switch (cmd) {
+			case STREAMS_CMD: printStreams(client); break;
+			case CHANNELS_CMD: printChannels(client); break;
+			case MAILSTREAMS_CMD: mailStreams(client); break;
+			default: Main.println("unknown cmd: " + cmd); return;
+		}
+	}
+	
+	private void printChannels (CloseableHttpClient client) throws IOException {
+		Main.println("channels");
 		for (String user : streamers) {
-			switch (cmd) {
-				case "streams": printStream(client, user); break;
-				case "channels": printChannel(client, user); break;
-				default: Main.println("unknown cmd: " + cmd); return;
+			HttpGet get = new HttpGet("https://api.twitch.tv/kraken/channels/" + user);
+			get.addHeader(new BasicHeader("client-id", clientId));
+			try (CloseableHttpResponse resp = client.execute(get)) {
+				String content = EntityUtils.toString(resp.getEntity());
+				if (resp.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+					String info = channelInfo(user, content);
+					System.out.println(StringUtils.left(info, cols-1));
+				} else {
+					Main.println(user + ": " + resp.getStatusLine());
+				}
 			}
-			Thread.sleep(delayms);
+			Main.sleep(delayMs);
 		}
-		System.out.println(responses + ", " + streamIgnored);
+		System.out.println("responses=" + responses);
 	}
 	
-	private void printChannel (CloseableHttpClient client, String user) throws Exception {
-		HttpGet get = new HttpGet("https://api.twitch.tv/kraken/channels/" + user);
-		get.addHeader(new BasicHeader("client-id", clientid));
-		try (CloseableHttpResponse resp = client.execute(get)) {
-			String content = EntityUtils.toString(resp.getEntity());
-			if (resp.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-				String info = chaninfo(user, content);
-				System.out.println(StringUtils.left(info, cols-1));
-			} else {
-				Main.println("printChannel: " + user + ": " + resp.getStatusLine());
+	private void printStreams (CloseableHttpClient client) throws IOException {
+		Main.println("streams");
+		for (String user : streamers) {
+			Stream stream = queryStream(client, user);
+			if (liveOk.contains(stream)) {
+				System.out.println(StringUtils.left(stream.toString(), cols - 1));
 			}
+			Main.sleep(delayMs);
 		}
+		System.out.println("responses=" + responses + " ignored=" + liveNotOk.size());
+		updateSeen();
 	}
 	
-	private void printStream (CloseableHttpClient client, String user) throws Exception {
-		Stream stream = queryStream(client, user);
-		if (stream != null) {
-			if (stream.live() && !gameignore.contains(stream.game.toLowerCase())) {
-				System.out.println(StringUtils.left(stream.toString(), cols-1));
-			} else {
-				streamIgnored.add(stream.name);
-			}
-		} 
-	}
-	
-	public Stream queryStream (CloseableHttpClient client, String user) throws Exception {
+	public Stream queryStream (CloseableHttpClient client, String user) throws IOException {
 		HttpGet get = new HttpGet("https://api.twitch.tv/kraken/streams/" + user);
-		get.addHeader(new BasicHeader("client-id", clientid));
+		get.addHeader(new BasicHeader("client-id", clientId));
 		try (CloseableHttpResponse resp = client.execute(get)) {
-			addresponse(resp);
+			updateResponse(resp);
 			String content = EntityUtils.toString(resp.getEntity());
 			if (resp.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-				return parseStream(content);
+				Stream s = parseStream(content);
+				updateStream(s);
+				return s;
 			} else {
-				Main.println("queryStream: " + user + ": " + resp.getStatusLine());
+				Main.println(user + ": " + resp.getStatusLine());
 				return null;
 			}
 		}
 	}
 	
-	private void addresponse (CloseableHttpResponse resp) {
+	private void updateResponse (CloseableHttpResponse resp) {
 		Integer c = Integer.valueOf(resp.getStatusLine().getStatusCode());
 		responses.compute(c, (k,v) -> Integer.valueOf((v != null ? v.intValue() : 0) + 1));
 	}
 	
-	private static String chaninfo (String user, String content) throws IOException {
+	private String channelInfo (String user, String content) throws IOException {
 		ObjectMapper mapper = new ObjectMapper();
 		JsonNode node = mapper.readTree(content);
 		JsonNode namenode = node.get("display_name");
 		return user + " - " + (namenode != null ? namenode.asText() : null);
 	}
 	
-	private static Stream parseStream (String content) throws IOException {
+	private Stream parseStream (String content) throws IOException {
 		ObjectMapper mapper = new ObjectMapper();
 		JsonNode node = mapper.readTree(content);
 		JsonNode stream = node.get("stream");
 		return stream != null && !stream.isNull() ? new Stream(stream) : null;
 	}
 	
-	static String formatDuration (Duration dur) {
-		long d = dur.toDays(), h = dur.toHours() % 24, m = dur.toMinutes() % 60, s = dur.getSeconds() % 60;
-		if (d > 0) {
-			return String.format("%dd %dh %dm", d, h, m);
-		} else if (h > 0) {
-			return String.format("%dh %dm", h, m);
-		} else {
-			return String.format("%dm", m);
+	private void mailStreams (CloseableHttpClient client) throws IOException {
+		if (!StringUtils.contains(mailto, "@") || asyncStreamers.size() == 0) {
+			Main.println("mail streams invalid config: t=" + mailto + ", as=" + asyncStreamers.size());
+			return;
+		}
+		
+		for (String user : asyncStreamers) {
+			queryStream(client, user);
+			Main.sleep(delayMs);	
+		}
+		
+		if (checkNotSeen()) {
+			//Main.println("mail streams send");
+			StringBuilder subSb = new StringBuilder("Streamers live: ");
+			StringBuilder textSb = new StringBuilder();
+			for (Stream s : liveOk) {
+				if (subSb.length() > 0) {
+					subSb.append(", ");
+				}
+				subSb.append(s.name);
+				textSb.append(s.toString()).append("\n");
+			}
+			textSb.append("responses: " + responses + "\n");
+			textSb.append("ignored: " + liveNotOk.size() + "\n");
+			SendMail sm = SendMail.create();
+			sm.send(mailto, subSb.toString(), textSb.toString());
+			updateSeen();
+		}
+	}
+	
+	private void updateStream (Stream s) {
+		if (s != null && s.live()) {
+			seenProps.setProperty(s.name.toLowerCase(),  Main.dateFormat().format(new Date()));
+			seenMod = true;
+			if (gameIgnore.contains(s.game.toLowerCase())) {
+				liveNotOk.add(s);
+			} else {
+				liveOk.add(s);
+			}
+		}
+	}
+	
+	public void loadStats () throws IOException {
+		if (statsFile != null && statsFile.exists()) {
+			try (FileInputStream is = new FileInputStream(statsFile)) {
+				seenProps.load(is);
+			}
+		}
+	}
+	
+	public void saveStats() throws IOException {
+		if (statsFile != null && seenMod) {
+			Main.saveProps(statsFile, seenProps);
+			seenMod = false;
+		}
+	}
+	
+	/** true if any not seen or seen more than 24h ago */
+	private boolean checkNotSeen () {
+		boolean notseen = false;
+		long ct = System.currentTimeMillis();
+		for (Stream s : liveOk) {
+			Long lt = SEEN.get(s.name.toLowerCase());
+			if (lt == null || lt.longValue() + (resendPeriod * 1000L) < ct) {
+				notseen = true;
+				break;
+			}
+		}
+		return notseen;
+	}
+	
+	/**
+	 * set all liveOk streamers seen
+	 */
+	private void updateSeen () {
+		Long t = Long.valueOf(System.currentTimeMillis());
+		for (Stream s : liveOk) {
+			SEEN.put(s.name.toLowerCase(), t);
+		}
+	}
+	
+	/** check async thread is running appropriately */
+	public void updateAsync () {
+		if (async && asyncPeriod >= 600) {
+			long nextMs = System.currentTimeMillis() + asyncPeriod*1000L;
+			//Main.println("update async next " + new Date(nextMs));
+			if (thread == null) {
+				Main.println("creating async thread");
+				thread = new TwitchThread();
+				thread.setDaemon(true);
+				thread.nextMs = nextMs;
+				thread.start();
+			} else {
+				thread.nextMs = nextMs;
+			}
+		} else if (thread != null) {
+			Main.println("stopping async thread");
+			thread.stop = true;
 		}
 	}
 	

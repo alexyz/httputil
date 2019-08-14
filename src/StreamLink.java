@@ -65,7 +65,7 @@ public class StreamLink {
 		boolean maybeLive = true;
 		if (host.equals("www.twitch.tv")) {
 			try (CloseableHttpClient client = HttpClients.createDefault()) {
-				TwitchQuery q = TwitchQuery.create(null);
+				TwitchQuery q = TwitchQuery.create();
 				Stream s = q.queryStream(client, streamer);
 				//Main.println("twitch stream: " + s);
 				maybeLive = s != null && s.live();

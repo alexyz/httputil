@@ -2,13 +2,15 @@
 import java.io.*;
 import java.lang.reflect.Method;
 import java.text.DateFormat;
+import java.time.Duration;
 import java.util.*;
 
 import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 
 public class Main {
 	
-	public static final long NS_IN_S = 1000000000;
+	public static final long NS_IN_S = 1_000_000_000L;
 	
 	private static BufferedReader BR;
 	
@@ -46,16 +48,26 @@ public class Main {
 	}
 	
 	public static Properties loadProps (File f) throws IOException {
+		return loadProps(f, true);
+	}
+	
+	public static Properties loadProps (File f, boolean ex) throws IOException {
 		Properties p = new Properties();
 		if (f.exists()) {
 			try (FileInputStream is = new FileInputStream(f)) {
 				p.load(is);
 			}
 		}
-		if (p.size() == 0) {
+		if (ex && p.size() == 0) {
 			throw new IOException("could not load properties from " + f.getAbsolutePath());
 		}
 		return p;
+	}
+	
+	public static void saveProps (File f, Properties p) throws IOException {
+		try (FileOutputStream os = new FileOutputStream(f)) {
+			p.store(os, null);
+		}
 	}
 	
 	public static String readLine() throws IOException {
@@ -65,9 +77,45 @@ public class Main {
 		return BR.readLine();
 	}
 	
-	public static void println(String l) {
-		DateFormat f = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.MEDIUM);
-		System.out.println(f.format(new Date()) + ": " + l);
+	public static DateFormat dateFormat () {
+		return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.MEDIUM);
 	}
-
+	
+	public static void println(String l) {
+		String t = dateFormat().format(new Date());
+		String n = Thread.currentThread().getName();
+		System.out.println(t + ": " + n + ": " + l);
+	}
+	
+	public static void sleep (int ms) {
+		try {
+			Thread.sleep(ms);
+		} catch (InterruptedException e) {
+			println("could not sleep " + ms + ": " + e);
+		}
+	}
+	
+	public static String formatDuration (Duration dur) {
+		long d = dur.toDays(), h = dur.toHours() % 24, m = dur.toMinutes() % 60, s = dur.getSeconds() % 60;
+		if (d > 0) {
+			return String.format("%dd %dh %dm", d, h, m);
+		} else if (h > 0) {
+			return String.format("%dh %dm", h, m);
+		} else {
+			return String.format("%dm", m);
+		}
+	}
+	
+	public static Set<String> getPropValues (Properties p, String pre) {
+		Set<String> set = new TreeSet<>();
+		for (String k : p.stringPropertyNames()) {
+			if (k.startsWith(pre)) {
+				String v = StringUtils.trimToNull(p.getProperty(k).toLowerCase());
+				if (v != null) {
+					set.add(v);
+				}
+			}
+		}
+		return set;
+	}
 }
