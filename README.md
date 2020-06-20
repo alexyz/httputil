@@ -6,7 +6,7 @@ build using maven, and copy the dependencies directory to installation location
 
 ## twitch
 
-queries twitch api to see who is live
+queries [twitch api](https://dev.twitch.tv/docs/api) to see who is live
 
 the main advantage over the following list in twitch is:
 * displays results in alphabetical order, rather than viewer count order
@@ -20,7 +20,7 @@ create a properties file with keys like this
 	s.x=y (where x is unique, and y is streamer name, e.g. s.01=lirik)
 	gi.x=y (where x is unique, and y is game name to ignore, e.g. gi.01=fortnite)
 	
-Unfortunataly you now require a twitch account because you must specify an oauth token in the requests
+unfortunately it now requires a twitch account because you must specify an oauth token in the requests
 
 you can generate both by logging in to twitch and going to https://twitchapps.com/tmi/
 

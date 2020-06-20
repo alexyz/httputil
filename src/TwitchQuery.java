@@ -1,7 +1,9 @@
 
 import java.io.*;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.apache.commons.lang3.StringUtils;
@@ -53,7 +55,9 @@ public class TwitchQuery {
 		Main.println("TQ", l);
 	}
 	
-	private final Set<String> streamers = new TreeSet<>();
+	public final Map<String, String> games = new TreeMap<>();
+	public final List<Stream> streams = new ArrayList<>();
+	private final Set<String> streamerNames = new TreeSet<>();
 	private final Set<String> asyncStreamers = new TreeSet<>();
 	private final Set<String> gameIgnore = new TreeSet<>();
 	private String clientId, mailto, oauth;
@@ -63,7 +67,7 @@ public class TwitchQuery {
 	private TwitchQuery(Properties props) {
 		clientId = props.getProperty(CLIENTID, "");
 		oauth = props.getProperty(OAUTH, "");
-		streamers.addAll(Main.getPropValues(props, STREAMER));
+		streamerNames.addAll(Main.getPropValues(props, STREAMER));
 		asyncStreamers.addAll(Main.getPropValues(props, ASYNC_STREAMER));
 		gameIgnore.addAll(Main.getPropValues(props, GAMEIGNORE));
 		cols = Integer.parseInt(props.getProperty(COLS, "80"));
@@ -111,46 +115,85 @@ public class TwitchQuery {
 	
 	private void printStreams(CloseableHttpClient client) throws IOException {
 		println("streams");
-		for (Stream s : queryStreams(client, streamers)) {
+		queryStreams(client, streamerNames);
+		queryGames(client, getGameIds(streams));
+		for (Stream s : streams) {
 			if (isOk(s)) {
-				System.out.println(StringUtils.left(s.toString(), cols - 1));
+				System.out.println(StringUtils.left(streamString(s, games), cols - 1));
 			} else {
 				System.out.println("ignore " + s);
 			}
 		}
 	}
 	
-	public List<Stream> queryStreams(CloseableHttpClient client, Set<String> users) throws IOException {
-		URIBuilder b = new URIBuilder().setScheme("https").setHost("api.twitch.tv").setPath("/helix/streams");
-		users.stream().forEach(s -> b.addParameter("user_login", s));
-		HttpGet get = new HttpGet(b.toString());
-		get.addHeader(createClientId());
-		get.addHeader(createBearer());
-		try (CloseableHttpResponse resp = client.execute(get)) {
-			String content = EntityUtils.toString(resp.getEntity());
-			System.out.println("resp=" + resp.getStatusLine() + " content=" + content);
-			if (resp.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-				ObjectMapper mapper = new ObjectMapper();
-				JsonNode node = mapper.readTree(content);
-				ArrayNode data = (ArrayNode) node.get("data");
-				List<Stream> list = new ArrayList<>();
-				for (int n = 0; n < data.size(); n++) {
-					JsonNode snode = data.get(n);
-					Stream s = new Stream();
-					s.created = Instant.parse(snode.get("started_at").asText());
-					s.game = snode.get("game_id").asText();
-					s.status = snode.get("title").asText();
-					s.type = snode.get("type").asText();
-					s.view = snode.get("viewer_count").asInt();
-					s.name = snode.get("user_name").asText();
-					list.add(s);
+	public String durStr(Instant i) {
+		return Main.formatDuration(Duration.between(i, Instant.now()));
+	}
+	
+	public String streamString(Stream s, Map<String,String> games) {
+		String gameName = games.getOrDefault(s.gameId, s.gameId);
+		return String.format("%s - %s - %dv - %s - %s", s.name, durStr(s.created), s.viewers, gameName, s.title);
+	}
+	
+	private Set<String> getGameIds(List<Stream> streams) {
+		return streams.stream().map(s -> s.gameId).collect(Collectors.toSet());
+	}
+	
+	public void queryStreams(CloseableHttpClient client, Set<String> users) throws IOException {
+		if (users.size() > 0) {
+			URIBuilder b = new URIBuilder().setScheme("https").setHost("api.twitch.tv").setPath("/helix/streams");
+			users.stream().forEach(s -> b.addParameter("user_login", s));
+			HttpGet get = new HttpGet(b.toString());
+			get.addHeader(createClientId());
+			get.addHeader(createBearer());
+			try (CloseableHttpResponse resp = client.execute(get)) {
+				String content = EntityUtils.toString(resp.getEntity());
+				if (resp.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+					ObjectMapper mapper = new ObjectMapper();
+					JsonNode node = mapper.readTree(content);
+					ArrayNode data = (ArrayNode) node.get("data");
+					for (int n = 0; n < data.size(); n++) {
+						streams.add(createStream(data.get(n)));
+					}
+				} else {
+					println("could not query streams: " + resp.getStatusLine() + ": " + EntityUtils.toString(resp.getEntity()));
 				}
-				return list;
-			} else {
-				println("could not query streams: " + resp.getStatusLine());
-				return Collections.emptyList();
 			}
 		}
+	}
+	
+	public void queryGames (CloseableHttpClient client, Set<String> gameIds) throws IOException {
+		if (gameIds.size() > 0) {
+			URIBuilder b = new URIBuilder().setScheme("https").setHost("api.twitch.tv").setPath("/helix/games");
+			gameIds.stream().forEach(g -> b.addParameter("id", g));
+			HttpGet get = new HttpGet(b.toString());
+			get.addHeader(createClientId());
+			get.addHeader(createBearer());
+			try (CloseableHttpResponse resp = client.execute(get)) {
+				String content = EntityUtils.toString(resp.getEntity());
+				if (resp.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+					ObjectMapper mapper = new ObjectMapper();
+					JsonNode node = mapper.readTree(content);
+					ArrayNode data = (ArrayNode) node.get("data");
+					for (int n = 0; n < data.size(); n++) {
+						JsonNode g = data.get(n);
+						games.put(g.get("id").asText(), g.get("name").asText());
+					}
+				} else {
+					println("could not query games: " + resp.getStatusLine() + ": " + EntityUtils.toString(resp.getEntity()));
+				}
+			}
+		}
+	}
+	
+	private Stream createStream(JsonNode snode) {
+		Stream s = new Stream();
+		s.created = Instant.parse(snode.get("started_at").asText());
+		s.gameId = snode.get("game_id").asText();
+		s.title = snode.get("title").asText();
+		s.viewers = snode.get("viewer_count").asInt();
+		s.name = snode.get("user_name").asText();
+		return s;
 	}
 	
 	private BasicHeader createClientId() {
@@ -163,33 +206,33 @@ public class TwitchQuery {
 			return;
 		}
 		
-		List<Stream> list = queryStreams(client, asyncStreamers);
+		queryStreams(client, asyncStreamers);
 		
-		if (checkNotSeen(list)) {
-			//Main.println("mail streams send");
+		if (checkNotSeen()) {
 			StringBuilder subSb = new StringBuilder();
 			StringBuilder textSb = new StringBuilder();
-			for (Stream s : list) {
+			for (Stream s : streams) {
 				subSb.append(subSb.length() > 0 ? ", " : "").append(s.name);
 				textSb.append(s.toString()).append("\n");
 			}
 			SendMail sm = SendMail.create();
 			sm.send(mailto, "Streamers live: " + subSb.toString(), textSb.toString());
-			updateSeen(list);
+			updateSeen();
 		}
 	}
 	
 	private boolean isOk(Stream s) {
-		return s != null && s.live() && !gameIgnore.contains(s.game.toLowerCase());
+		String gameName = games.get(s.gameId.toLowerCase());
+		return s != null && (gameName == null || !gameIgnore.contains(gameName));
 	}
 	
 	/**
 	 * true if any not seen or seen more than 24h ago
 	 */
-	private boolean checkNotSeen(List<Stream> list) {
+	private boolean checkNotSeen() {
 		boolean notseen = false;
 		long ct = System.currentTimeMillis();
-		for (Stream s : list) {
+		for (Stream s : streams) {
 			Long lt = SEEN.get(s.name.toLowerCase());
 			if (lt == null || lt.longValue() + (resendPeriod * 1000L) < ct) {
 				notseen = true;
@@ -202,9 +245,9 @@ public class TwitchQuery {
 	/**
 	 * set all liveOk streamers seen
 	 */
-	private void updateSeen(List<Stream> list) {
+	private void updateSeen() {
 		Long t = Long.valueOf(System.currentTimeMillis());
-		list.stream().filter(s -> isOk(s)).forEach(s -> SEEN.put(s.name.toLowerCase(), t));
+		streams.stream().filter(s -> isOk(s)).forEach(s -> SEEN.put(s.name.toLowerCase(), t));
 	}
 	
 	/**
@@ -213,7 +256,6 @@ public class TwitchQuery {
 	public void updateAsync() {
 		if (async && asyncPeriod >= 600) {
 			long nextMs = System.currentTimeMillis() + asyncPeriod * 1000L;
-			//Main.println("update async next " + new Date(nextMs));
 			if (thread == null) {
 				println("creating async thread");
 				thread = new TwitchThread();

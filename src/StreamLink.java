@@ -70,9 +70,8 @@ public class StreamLink {
 		if (host.equals("www.twitch.tv")) {
 			try (CloseableHttpClient client = HttpClients.createDefault()) {
 				TwitchQuery q = TwitchQuery.create();
-				Stream s = q.queryStreams(client, Collections.singleton(streamer)).get(0);
-				//Main.println("twitch stream: " + s);
-				maybeLive = s != null && s.live();
+				q.queryStreams(client, Collections.singleton(streamer));
+				maybeLive = q.streams.size() > 0;
 			} catch (Exception e) {
 				println("could not query twitch: " + e);
 			}
