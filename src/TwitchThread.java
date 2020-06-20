@@ -2,7 +2,11 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 
 public class TwitchThread extends Thread {
-	
+
+	private static void println(String l) {
+		Main.println("TT", l);
+	}
+
 	public volatile boolean stop;
 	public volatile long nextMs;
 	
@@ -19,7 +23,7 @@ public class TwitchThread extends Thread {
 		} catch (Exception e) {
 			e.printStackTrace();
 		} finally {
-			Main.println("async thread exit");
+			println("async thread exit");
 			TwitchQuery.thread = null;
 		}
 	}
@@ -27,12 +31,10 @@ public class TwitchThread extends Thread {
 	private static void runAsync () {
 		try (CloseableHttpClient client = HttpClients.createDefault()) {
 			TwitchQuery q = TwitchQuery.create();
-			q.loadStats();
 			q.run(client, TwitchQuery.MAILSTREAMS_CMD);
 			q.updateAsync();
-			q.saveStats();
 		} catch (Exception e) {
-			Main.println("runAsync: " + e);
+			println("runAsync: " + e);
 		}
 	}
 }

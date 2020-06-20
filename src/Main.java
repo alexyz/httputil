@@ -81,10 +81,14 @@ public class Main {
 		return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.MEDIUM);
 	}
 	
-	public static void println(String l) {
+	public static void println(String cat, String l) {
 		String t = dateFormat().format(new Date());
 		String n = Thread.currentThread().getName();
-		System.out.println(t + ": " + n + ": " + l);
+		System.out.println(cat + ": " + t + ": " + n + ": " + l);
+	}
+
+	private static void println(String l) {
+		println("M", l);
 	}
 	
 	public static void sleep (int ms) {

@@ -15,11 +15,15 @@ import javax.mail.internet.MimeMessage;
 import org.apache.commons.lang3.StringUtils;
 
 public class SendMail {
+
+	private static void println(String l) {
+		Main.println("SM", l);
+	}
 	
 	public static void main (String[] args) throws Exception {
 		String l = Main.readLine();
 		if (l.length() > 0) {
-			Main.println(Base64.getEncoder().encodeToString(l.getBytes()));
+			println(Base64.getEncoder().encodeToString(l.getBytes()));
 		}
 	}
 	
@@ -54,15 +58,15 @@ public class SendMail {
 	}
 	
 	public void send (String to, String sub, String text) {
-		Main.println("send mail " + to + "\n" + sub + "\n" + text);
+		println("send " + to + "\n" + sub + "\n" + text);
 		
 		if (isBlank(host) || !contains(from, "@") || (auth && (isBlank(user) || isBlank(pass)))) {
-			Main.println("send mail invalid config: h=" + host + ", f=" + from + ", a=" + auth + ", u=" + user + ", p=" + (pass != null));
+			println("send invalid config: h=" + host + ", f=" + from + ", a=" + auth + ", u=" + user + ", p=" + (pass != null));
 			return;
 		}
 		
 		if (!contains(to, "@") || isBlank(sub) || isBlank(text)) {
-			Main.println("send mail invalid params: t=" + to + ", s=" + sub + ", t=" + StringUtils.normalizeSpace(text));
+			println("send invalid params: t=" + to + ", s=" + sub + ", t=" + StringUtils.normalizeSpace(text));
 			return;
 		}
 		
@@ -111,7 +115,7 @@ public class SendMail {
 			throw e;
 			
 		} catch (Exception e) {
-			Main.println("could not send: " + e);
+			println("could not send: " + e);
 		}
 	}
 }

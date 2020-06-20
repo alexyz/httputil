@@ -22,6 +22,10 @@ public class StreamLink {
 	private static boolean reboot;
 	private static long starttime, lastreboot;
 
+	private static void println(String l) {
+		Main.println("SL", l);
+	}
+
 	public static void main(String[] args) throws Exception {
 		if (args.length > 1) {
 			throw new Exception("usage: java -jar httputil.jar StreamLink streamlink.properties");
@@ -41,13 +45,13 @@ public class StreamLink {
 		host = p.getProperty(HOST, "www.twitch.tv");
 		reboot = Boolean.parseBoolean(p.getProperty(REBOOT));
 		
-		Main.println("exe = " + exe + " exists = " + exe.exists());
-		Main.println(STREAMER + " = " + streamer);
-		Main.println(QUALITY + " = " + qual);
-		Main.println(SLEEPTIME + " = " + stime);
-		Main.println(DIR + " = " + dir  + " exists = " + dir.exists());
-		Main.println(HOST + " = " + host);
-		Main.println(REBOOT + " = " + reboot);
+		println("exe = " + exe + " exists = " + exe.exists());
+		println(STREAMER + " = " + streamer);
+		println(QUALITY + " = " + qual);
+		println(SLEEPTIME + " = " + stime);
+		println(DIR + " = " + dir  + " exists = " + dir.exists());
+		println(HOST + " = " + host);
+		println(REBOOT + " = " + reboot);
 		
 		if (!dir.exists()) {
 			throw new Exception("dir does not exist: " + dir.getAbsolutePath());
@@ -66,11 +70,11 @@ public class StreamLink {
 		if (host.equals("www.twitch.tv")) {
 			try (CloseableHttpClient client = HttpClients.createDefault()) {
 				TwitchQuery q = TwitchQuery.create();
-				Stream s = q.queryStream(client, streamer);
+				Stream s = q.queryStreams(client, Collections.singleton(streamer)).get(0);
 				//Main.println("twitch stream: " + s);
 				maybeLive = s != null && s.live();
 			} catch (Exception e) {
-				Main.println("could not query twitch: " + e);
+				println("could not query twitch: " + e);
 			}
 		}
 		
@@ -111,12 +115,12 @@ public class StreamLink {
 					if (l.length() > 80) {
 						l = l.substring(0, 80) + "...";
 					}
-					Main.println(l);
+					println(l);
 				}
 			}
 		}
 		
-		Main.println("exit " + p.exitValue());
+		println("exit " + p.exitValue());
 	}
 
 	private static void sleep(int n) throws Exception {
@@ -130,7 +134,7 @@ public class StreamLink {
 				InetAddress.getByName(host);
 				return;
 			} catch (Exception e) {
-				Main.println("could not get host: " + e.toString());
+				println("could not get host: " + e.toString());
 			}
 			
 			long t = System.nanoTime();
@@ -140,10 +144,10 @@ public class StreamLink {
 					VmReboot.main(new String[0]);
 					lastreboot = t;
 				} else {
-					Main.println("avoid reboot due to last reboot less than 1 hour ago");
+					println("avoid reboot due to last reboot less than 1 hour ago");
 				}
 			} else {
-				Main.println("avoid reboot due to started less than 1 hour ago");
+				println("avoid reboot due to started less than 1 hour ago");
 			}
 		}
 	}

@@ -6,19 +6,27 @@ build using maven, and copy the dependencies directory to installation location
 
 ## twitch
 
-queries [twitch api](https://github.com/justintv/Twitch-API/wiki/API) to see who is live
+queries twitch api to see who is live
 
 the main advantage over the following list in twitch is:
 * displays results in alphabetical order, rather than viewer count order
 * ability to ignore streamers playing a game you don't like
-* don't need a twitch account (if you can scrape a client-id from somewhere)
 
 create a properties file with keys like this
 
-	clientid=x (where x is the value to use in the client-id header) 
+	clientid=x (where x is the client-id) 
+	oauth=x (where x is the oauth token)
 	cols=x (where x is max number of output columns, e.g. cols=80)
 	s.x=y (where x is unique, and y is streamer name, e.g. s.01=lirik)
 	gi.x=y (where x is unique, and y is game name to ignore, e.g. gi.01=fortnite)
+	
+Unfortunataly you now require a twitch account because you must specify an oauth token in the requests
+
+you can generate both by logging in to twitch and going to https://twitchapps.com/tmi/
+
+the http query headers give the client-id (enable chrome dev tools network tab and click on first column)
+
+the response gives the oauth token (remove the oauth: prefix)
 
 ## vmreboot
 
