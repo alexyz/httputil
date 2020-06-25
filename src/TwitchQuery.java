@@ -1,5 +1,6 @@
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
@@ -117,11 +118,17 @@ public class TwitchQuery {
 		println("streams");
 		queryStreams(client, streamerNames);
 		queryGames(client, getGameIds(streams));
+		Set<String> ignored = new TreeSet<>();
 		for (Stream s : streams) {
 			if (isOk(s)) {
-				System.out.println(StringUtils.left(streamString(s, games), cols - 1));
+				String v1 = streamString(s, games);
+				String v2 = new String(v1.getBytes(StandardCharsets.US_ASCII), StandardCharsets.US_ASCII);
+				System.out.println(StringUtils.left(v2, cols - 1));
 			} else {
-				System.out.println("ignore " + s);
+				ignored.add(s.userName);
+			}
+			if (ignored.size() > 0) {
+				System.out.println("ignored " + ignored);
 			}
 		}
 	}
@@ -130,9 +137,9 @@ public class TwitchQuery {
 		return Main.formatDuration(Duration.between(i, Instant.now()));
 	}
 	
-	public String streamString(Stream s, Map<String,String> games) {
+	public String streamString(Stream s, Map<String, String> games) {
 		String gameName = games.getOrDefault(s.gameId, s.gameId);
-		return String.format("%s - %s - %dv - %s - %s", s.name, durStr(s.created), s.viewers, gameName, s.title);
+		return String.format("%s - %s - %dv - %s - %s", s.userName, durStr(s.startedAt), s.viewerCount, gameName, s.title);
 	}
 	
 	private Set<String> getGameIds(List<Stream> streams) {
@@ -155,6 +162,7 @@ public class TwitchQuery {
 					for (int n = 0; n < data.size(); n++) {
 						streams.add(createStream(data.get(n)));
 					}
+					Collections.sort(streams);
 				} else {
 					println("could not query streams: " + resp.getStatusLine() + ": " + EntityUtils.toString(resp.getEntity()));
 				}
@@ -162,7 +170,7 @@ public class TwitchQuery {
 		}
 	}
 	
-	public void queryGames (CloseableHttpClient client, Set<String> gameIds) throws IOException {
+	public void queryGames(CloseableHttpClient client, Set<String> gameIds) throws IOException {
 		if (gameIds.size() > 0) {
 			URIBuilder b = new URIBuilder().setScheme("https").setHost("api.twitch.tv").setPath("/helix/games");
 			gameIds.stream().forEach(g -> b.addParameter("id", g));
@@ -188,11 +196,11 @@ public class TwitchQuery {
 	
 	private Stream createStream(JsonNode snode) {
 		Stream s = new Stream();
-		s.created = Instant.parse(snode.get("started_at").asText());
+		s.startedAt = Instant.parse(snode.get("started_at").asText());
 		s.gameId = snode.get("game_id").asText();
 		s.title = snode.get("title").asText();
-		s.viewers = snode.get("viewer_count").asInt();
-		s.name = snode.get("user_name").asText();
+		s.viewerCount = snode.get("viewer_count").asInt();
+		s.userName = snode.get("user_name").asText();
 		return s;
 	}
 	
@@ -212,7 +220,7 @@ public class TwitchQuery {
 			StringBuilder subSb = new StringBuilder();
 			StringBuilder textSb = new StringBuilder();
 			for (Stream s : streams) {
-				subSb.append(subSb.length() > 0 ? ", " : "").append(s.name);
+				subSb.append(subSb.length() > 0 ? ", " : "").append(s.userName);
 				textSb.append(s.toString()).append("\n");
 			}
 			SendMail sm = SendMail.create();
@@ -222,8 +230,8 @@ public class TwitchQuery {
 	}
 	
 	private boolean isOk(Stream s) {
-		String gameName = games.get(s.gameId.toLowerCase());
-		return s != null && (gameName == null || !gameIgnore.contains(gameName));
+		String gameName = games.get(s.gameId);
+		return s != null && (gameName == null || !gameIgnore.contains(gameName.toLowerCase()));
 	}
 	
 	/**
@@ -233,7 +241,7 @@ public class TwitchQuery {
 		boolean notseen = false;
 		long ct = System.currentTimeMillis();
 		for (Stream s : streams) {
-			Long lt = SEEN.get(s.name.toLowerCase());
+			Long lt = SEEN.get(s.userName.toLowerCase());
 			if (lt == null || lt.longValue() + (resendPeriod * 1000L) < ct) {
 				notseen = true;
 				break;
@@ -247,7 +255,7 @@ public class TwitchQuery {
 	 */
 	private void updateSeen() {
 		Long t = Long.valueOf(System.currentTimeMillis());
-		streams.stream().filter(s -> isOk(s)).forEach(s -> SEEN.put(s.name.toLowerCase(), t));
+		streams.stream().filter(s -> isOk(s)).forEach(s -> SEEN.put(s.userName.toLowerCase(), t));
 	}
 	
 	/**
