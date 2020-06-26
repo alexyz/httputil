@@ -30,7 +30,7 @@ public class TwitchQuery {
 	
 	public static TwitchThread thread;
 	
-	public static void main(String[] args) throws Exception {
+	public static void main (String[] args) throws Exception {
 		try (CloseableHttpClient client = HttpClients.createDefault()) {
 			String cmd = null;
 			while (true) {
@@ -48,11 +48,11 @@ public class TwitchQuery {
 		}
 	}
 	
-	public static TwitchQuery create() throws IOException {
+	public static TwitchQuery create () throws IOException {
 		return new TwitchQuery(Main.loadProps(new File("twitch.properties")));
 	}
 	
-	private static void println(String l) {
+	private static void println (String l) {
 		Main.println("TQ", l);
 	}
 	
@@ -65,7 +65,7 @@ public class TwitchQuery {
 	private int asyncPeriod, resendPeriod, cols;
 	private boolean async;
 	
-	private TwitchQuery(Properties props) {
+	private TwitchQuery (Properties props) {
 		clientId = props.getProperty(CLIENTID, "");
 		oauth = props.getProperty(OAUTH, "");
 		streamerNames.addAll(Main.getPropValues(props, STREAMER));
@@ -78,7 +78,7 @@ public class TwitchQuery {
 		mailto = props.getProperty(MAILTO);
 	}
 	
-	public void run(CloseableHttpClient client, String cmd) throws Exception {
+	public void run (CloseableHttpClient client, String cmd) throws Exception {
 		switch (cmd) {
 			case STREAMS_CMD:
 				printStreams(client);
@@ -95,7 +95,7 @@ public class TwitchQuery {
 		}
 	}
 	
-	private void validateOath(CloseableHttpClient client) throws IOException {
+	private void validateOath (CloseableHttpClient client) throws IOException {
 		println("validate oauth");
 		URIBuilder b = new URIBuilder().setScheme("https").setHost("id.twitch.tv").setPath("/oauth2/validate");
 		HttpGet get = new HttpGet(b.toString());
@@ -106,15 +106,15 @@ public class TwitchQuery {
 		}
 	}
 	
-	private BasicHeader createOAuth() {
+	private BasicHeader createOAuth () {
 		return new BasicHeader("Authorization", "OAuth " + oauth);
 	}
 	
-	private BasicHeader createBearer() {
+	private BasicHeader createBearer () {
 		return new BasicHeader("Authorization", "Bearer " + oauth);
 	}
 	
-	private void printStreams(CloseableHttpClient client) throws IOException {
+	private void printStreams (CloseableHttpClient client) throws IOException {
 		println("streams");
 		queryStreams(client, streamerNames);
 		queryGames(client, getGameIds(streams));
@@ -127,26 +127,26 @@ public class TwitchQuery {
 			} else {
 				ignored.add(s.userName);
 			}
-			if (ignored.size() > 0) {
-				System.out.println("ignored " + ignored);
-			}
+		}
+		if (ignored.size() > 0) {
+			System.out.println("ignored " + ignored);
 		}
 	}
 	
-	public String durStr(Instant i) {
+	public String durStr (Instant i) {
 		return Main.formatDuration(Duration.between(i, Instant.now()));
 	}
 	
-	public String streamString(Stream s, Map<String, String> games) {
+	public String streamString (Stream s, Map<String, String> games) {
 		String gameName = games.getOrDefault(s.gameId, s.gameId);
 		return String.format("%s - %s - %dv - %s - %s", s.userName, durStr(s.startedAt), s.viewerCount, gameName, s.title);
 	}
 	
-	private Set<String> getGameIds(List<Stream> streams) {
+	private Set<String> getGameIds (List<Stream> streams) {
 		return streams.stream().map(s -> s.gameId).collect(Collectors.toSet());
 	}
 	
-	public void queryStreams(CloseableHttpClient client, Set<String> users) throws IOException {
+	public void queryStreams (CloseableHttpClient client, Set<String> users) throws IOException {
 		if (users.size() > 0) {
 			URIBuilder b = new URIBuilder().setScheme("https").setHost("api.twitch.tv").setPath("/helix/streams");
 			users.stream().forEach(s -> b.addParameter("user_login", s));
@@ -170,7 +170,7 @@ public class TwitchQuery {
 		}
 	}
 	
-	public void queryGames(CloseableHttpClient client, Set<String> gameIds) throws IOException {
+	public void queryGames (CloseableHttpClient client, Set<String> gameIds) throws IOException {
 		if (gameIds.size() > 0) {
 			URIBuilder b = new URIBuilder().setScheme("https").setHost("api.twitch.tv").setPath("/helix/games");
 			gameIds.stream().forEach(g -> b.addParameter("id", g));
@@ -194,7 +194,7 @@ public class TwitchQuery {
 		}
 	}
 	
-	private Stream createStream(JsonNode snode) {
+	private Stream createStream (JsonNode snode) {
 		Stream s = new Stream();
 		s.startedAt = Instant.parse(snode.get("started_at").asText());
 		s.gameId = snode.get("game_id").asText();
@@ -204,11 +204,11 @@ public class TwitchQuery {
 		return s;
 	}
 	
-	private BasicHeader createClientId() {
+	private BasicHeader createClientId () {
 		return new BasicHeader("Client-ID", clientId);
 	}
 	
-	private void mailStreams(CloseableHttpClient client) throws IOException {
+	private void mailStreams (CloseableHttpClient client) throws IOException {
 		if (!StringUtils.contains(mailto, "@") || asyncStreamers.size() == 0) {
 			println("mail streams invalid config: t=" + mailto + ", as=" + asyncStreamers.size());
 			return;
@@ -229,7 +229,7 @@ public class TwitchQuery {
 		}
 	}
 	
-	private boolean isOk(Stream s) {
+	private boolean isOk (Stream s) {
 		String gameName = games.get(s.gameId);
 		return s != null && (gameName == null || !gameIgnore.contains(gameName.toLowerCase()));
 	}
@@ -237,7 +237,7 @@ public class TwitchQuery {
 	/**
 	 * true if any not seen or seen more than 24h ago
 	 */
-	private boolean checkNotSeen() {
+	private boolean checkNotSeen () {
 		boolean notseen = false;
 		long ct = System.currentTimeMillis();
 		for (Stream s : streams) {
@@ -253,7 +253,7 @@ public class TwitchQuery {
 	/**
 	 * set all liveOk streamers seen
 	 */
-	private void updateSeen() {
+	private void updateSeen () {
 		Long t = Long.valueOf(System.currentTimeMillis());
 		streams.stream().filter(s -> isOk(s)).forEach(s -> SEEN.put(s.userName.toLowerCase(), t));
 	}
@@ -261,7 +261,7 @@ public class TwitchQuery {
 	/**
 	 * check async thread is running appropriately
 	 */
-	public void updateAsync() {
+	public void updateAsync () {
 		if (async && asyncPeriod >= 600) {
 			long nextMs = System.currentTimeMillis() + asyncPeriod * 1000L;
 			if (thread == null) {
