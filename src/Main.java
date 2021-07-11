@@ -11,6 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 public class Main {
 	
 	public static final long NS_IN_S = 1_000_000_000L;
+	public static final Random RANDOM = new Random();
 	
 	private static BufferedReader BR;
 	
@@ -18,6 +19,7 @@ public class Main {
 		Map<String,Class<?>> map = new TreeMap<>();
 		map.put("twitch", TwitchQuery.class);
 		map.put("vmreboot", VmReboot.class);
+		map.put("vmreboot2", VmReboot2.class);
 		map.put("streamlink", StreamLink.class);
 		
 		if (args.length > 0) {

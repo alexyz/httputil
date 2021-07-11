@@ -15,7 +15,7 @@ import org.apache.http.util.EntityUtils;
  */
 public class VmReboot {
 	
-	private static final String LOG = "log", COMMIT = "commit", PASS = "pass", HOST = "host";
+	public static final String LOG = "log", COMMIT = "commit", PASS = "pass", HOST = "host";
 	
 	private static PrintWriter logpw;
 	
