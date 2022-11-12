@@ -13,6 +13,8 @@ import java.util.*;
 
 public class VmReboot2 implements AutoCloseable {
 
+    private static final int retryms = 5000;
+
     public static void main(String[] args) throws Exception {
         if (args.length > 1) {
             System.out.println("usage: java -jar httputil.jar VmReboot2");
@@ -50,8 +52,7 @@ public class VmReboot2 implements AutoCloseable {
         context.setAttribute(HttpClientContext.COOKIE_STORE, cookieStore);
     }
 
-    public void login() throws Exception {
-        println("login");
+    public void login() {
 
         // Request URL: http://192.168.100.1/login?arg=YWRtaW46NzU2MDU1NTE=&_n=02414&_=1624187581555
         //arg is base64(admin:75605551)
@@ -62,16 +63,30 @@ public class VmReboot2 implements AutoCloseable {
         HttpGet get = new HttpGet(String.format("http://%s/login?arg=%s&_n=%s&_=%s", host, arg, nonce, System.currentTimeMillis()));
         println(get);
 
-        try (CloseableHttpResponse r = client.execute(get)) {
-            String body = EntityUtils.toString(r.getEntity());
-            println("response " + r.getStatusLine());
-            println(body);
-            if (r.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-                println(new String(Base64.getDecoder().decode(body), StandardCharsets.UTF_8));
-                setCredential(body);
-            } else {
-                throw new Exception("unexpected login response: " + r.getStatusLine().getStatusCode());
+        for (int n = 0; ; n++) {
+            println("login " + (n+1));
+            try (CloseableHttpResponse r = client.execute(get)) {
+                String body = EntityUtils.toString(r.getEntity());
+                println("login response " + r.getStatusLine() + " => " + StringUtils.normalizeSpace(body));
+                if (r.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+                    println(new String(Base64.getDecoder().decode(body), StandardCharsets.UTF_8));
+                    setCredential(body);
+                    return;
+                }
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                println("could not login: " + StringUtils.normalizeSpace(e.toString()));
             }
+            sleep(retryms);
+        }
+    }
+
+    private void sleep(int ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            println("could not sleep: " + e);
         }
     }
 
@@ -84,16 +99,23 @@ public class VmReboot2 implements AutoCloseable {
         cookieStore.addCookie(cookie);
     }
 
-    private void reboot() throws Exception {
+    private void reboot() {
         if (commit) {
-            println("reboot");
             HttpGet get = new HttpGet(String.format("http://%s/snmpSet?oid=1.3.6.1.2.1.69.1.1.3.0=2;2;&_n=%s&_=%s", host, nonce, System.currentTimeMillis()));
             println(get);
-            try (CloseableHttpResponse r = client.execute(get, context)) {
-                String body = EntityUtils.toString(r.getEntity());
-                println(r.getStatusLine());
-                println(StringUtils.normalizeSpace(body));
-                // any response ok?
+            for (int n = 0; ; n++) {
+                println("reboot " + (n+1));
+                try (CloseableHttpResponse r = client.execute(get, context)) {
+                    String body = EntityUtils.toString(r.getEntity());
+                    println("reboot response " + r.getStatusLine() + " => " + StringUtils.normalizeSpace(body));
+                    // any response ok?
+                    return;
+                } catch (RuntimeException e) {
+                    throw e;
+                } catch (Exception e) {
+                    println("could not reboot: " + StringUtils.normalizeSpace(e.toString()));
+                }
+                sleep(retryms);
             }
         } else {
             println("not rebooting");
@@ -102,13 +124,21 @@ public class VmReboot2 implements AutoCloseable {
 
     private void logout() throws IOException {
         HttpGet get = new HttpGet(String.format("http://%s/logout?_n=%s&_=%s", host, nonce, System.currentTimeMillis()));
-        println("logout");
         println(get);
-        try (CloseableHttpResponse r = client.execute(get, context)) {
-            String body = EntityUtils.toString(r.getEntity());
-            println(r.getStatusLine());
-            println(StringUtils.normalizeSpace(body));
-            // any response is ok
+        // only try one logout if we just rebooted
+        for (int n = 0; n < 1 || !commit; n++) {
+            println("logout");
+            try (CloseableHttpResponse r = client.execute(get, context)) {
+                String body = EntityUtils.toString(r.getEntity());
+                println("logout response: " + r.getStatusLine() + " => " + StringUtils.normalizeSpace(body));
+                // any response is ok
+                return;
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                println("could not logout: " + StringUtils.normalizeSpace(e.toString()));
+            }
+            sleep(retryms);
         }
     }
 
